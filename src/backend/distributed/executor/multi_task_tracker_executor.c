@@ -2863,8 +2863,7 @@ TrackerHashCleanupJob(HTAB *taskTrackerHash, Task *jobCleanupTask)
 				if (queryStatus == CLIENT_QUERY_DONE)
 				{
 					ereport(DEBUG4, (errmsg("completed cleanup query for job "
-											UINT64_FORMAT " on node \"%s:%u\"", jobId,
-											nodeName, nodePort)));
+											UINT64_FORMAT, jobId)));
 
 					/* clear connection for future cleanup queries */
 					taskTracker->connectionBusy = false;
