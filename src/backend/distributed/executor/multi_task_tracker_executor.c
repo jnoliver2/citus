@@ -32,7 +32,7 @@
 #include "storage/fd.h"
 #include "utils/builtins.h"
 #include "utils/hsearch.h"
-
+#include "utils/timestamp.h"
 
 int MaxAssignTaskBatchSize = 64; /* maximum number of tasks to assign per round */
 
@@ -2766,8 +2766,10 @@ TrackerHashCleanupJob(HTAB *taskTrackerHash, Task *jobCleanupTask)
 	uint64 jobId = jobCleanupTask->jobId;
 	List *taskTrackerList = NIL;
 	ListCell *taskTrackerCell = NULL;
+	List *remainingTaskTrackerList = NIL;
 	long sleepInterval = 0;
 	const int minimumSleepInterval = 150;
+	bool timedOut = false;
 
 	TaskTracker *taskTracker = NULL;
 	HASH_SEQ_STATUS status;
@@ -2818,6 +2820,68 @@ TrackerHashCleanupJob(HTAB *taskTrackerHash, Task *jobCleanupTask)
 		taskTracker = (TaskTracker *) hash_seq_search(&status);
 	}
 
+	/* walk over task trackers to which we sent clean up requests */
+
+	remainingTaskTrackerList = taskTrackerList;
+
+	sleepInterval = (Max(minimumSleepInterval, RemoteTaskCheckInterval * 2) * 1000L) / 100;
+
+	TimestampTz startTime = GetCurrentTimestamp();
+	while (list_length(remainingTaskTrackerList) > 0 && !timedOut)
+	{
+		List *activeTackTrackerList = remainingTaskTrackerList;
+		ListCell *activeTaskTrackerCell = NULL;
+		remainingTaskTrackerList = NIL;
+
+		pg_usleep(sleepInterval);
+		TimestampTz currentTime = GetCurrentTimestamp();
+		timedOut = TimestampDifferenceExceeds(startTime, currentTime, 150);
+
+		foreach(activeTaskTrackerCell, activeTackTrackerList)
+		{
+			TaskTracker *taskTracker = (TaskTracker *) lfirst(activeTaskTrackerCell);
+			int32 connectionId = taskTracker->connectionId;
+			const char *nodeName = taskTracker->workerName;
+			uint32 nodePort = taskTracker->workerPort;
+
+			ResultStatus resultStatus = MultiClientResultStatus(connectionId);
+			if (resultStatus == CLIENT_RESULT_READY)
+			{
+				QueryStatus queryStatus = MultiClientQueryStatus(connectionId);
+				if (queryStatus == CLIENT_QUERY_DONE)
+				{
+					ereport(DEBUG4, (errmsg("completed cleanup query for job " UINT64_FORMAT
+											" on node \"%s:%u\"", jobId, nodeName,
+											nodePort)));
+
+					/* clear connection for future cleanup queries */
+					taskTracker->connectionBusy = false;
+				}
+				else if (timedOut)
+				{
+					ereport(WARNING, (errmsg("(1) could not receive response for cleanup query "
+											 "for job " UINT64_FORMAT " on node \"%s:%u\"",
+											 jobId, nodeName, nodePort)));
+				}
+				else
+				{
+					remainingTaskTrackerList = lappend(remainingTaskTrackerList, taskTracker);
+				}
+			}
+			else if (timedOut)
+			{
+				ereport(WARNING, (errmsg("(2) could not receive response for cleanup query "
+										 "for job " UINT64_FORMAT " on node \"%s:%u\"",
+										 jobId, nodeName, nodePort)));
+			}
+			else
+			{
+				remainingTaskTrackerList = lappend(remainingTaskTrackerList, taskTracker);
+			}
+		}
+	}
+
+#if 0
 	/* give task trackers time to finish their clean up jobs */
 	sleepInterval = Max(minimumSleepInterval, RemoteTaskCheckInterval * 2) * 1000L;
 	pg_usleep(sleepInterval);
@@ -2858,6 +2922,7 @@ TrackerHashCleanupJob(HTAB *taskTrackerHash, Task *jobCleanupTask)
 									 jobId, nodeName, nodePort)));
 		}
 	}
+#endif
 }
 
 
