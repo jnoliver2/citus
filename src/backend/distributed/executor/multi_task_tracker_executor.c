@@ -2768,7 +2768,7 @@ TrackerHashCleanupJob(HTAB *taskTrackerHash, Task *jobCleanupTask)
 	List *remainingTaskTrackerList = NIL;
 	const int minimumTimeoutDuration = 200;
 	long timeoutDuration = 0;
-	long statusCheckInterval = 20;
+	long statusCheckInterval = 10;
 	bool timedOut = false;
 	TimestampTz startTime = 0;
 	TaskTracker *taskTracker = NULL;
@@ -2895,7 +2895,6 @@ TrackerHashCleanupJob(HTAB *taskTrackerHash, Task *jobCleanupTask)
 			}
 		}
 	}
-
 }
 
 
