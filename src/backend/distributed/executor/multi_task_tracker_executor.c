@@ -2765,14 +2765,17 @@ TrackerHashCleanupJob(HTAB *taskTrackerHash, Task *jobCleanupTask)
 {
 	uint64 jobId = jobCleanupTask->jobId;
 	List *taskTrackerList = NIL;
-	ListCell *taskTrackerCell = NULL;
 	List *remainingTaskTrackerList = NIL;
-	long sleepInterval = 0;
-	const int minimumSleepInterval = 150;
+	const int minimumTimeoutDuration = 200;
+	long timeoutDuration = 0;
+	long statusCheckInterval = 20;
 	bool timedOut = false;
-
+	TimestampTz startTime = 0;
 	TaskTracker *taskTracker = NULL;
 	HASH_SEQ_STATUS status;
+
+	timeoutDuration = Max(minimumTimeoutDuration, RemoteTaskCheckInterval * 2) * 1000L;
+
 	hash_seq_init(&status, taskTrackerHash);
 
 	/* walk over task trackers and try to issue job clean up requests */
@@ -2820,22 +2823,31 @@ TrackerHashCleanupJob(HTAB *taskTrackerHash, Task *jobCleanupTask)
 		taskTracker = (TaskTracker *) hash_seq_search(&status);
 	}
 
-	/* walk over task trackers to which we sent clean up requests */
+	/* record the time when we start waiting for cleanup jobs to be sent */
+	startTime = GetCurrentTimestamp();
 
+	/*
+	 * Walk over task trackers to which we sent clean up requests. Perform
+	 * these checks until it times out.
+	 */
 	remainingTaskTrackerList = taskTrackerList;
 
-	sleepInterval = (Max(minimumSleepInterval, RemoteTaskCheckInterval * 2) * 1000L) / 100;
-
-	TimestampTz startTime = GetCurrentTimestamp();
+	/*
+	 * We want to determine timedOut flag in the beginning of the loop to make
+	 * sure we iterate one more time after time out. This is necessary to report
+	 * warning messages for timed out cleanup jobs.
+	 */
 	while (list_length(remainingTaskTrackerList) > 0 && !timedOut)
 	{
 		List *activeTackTrackerList = remainingTaskTrackerList;
 		ListCell *activeTaskTrackerCell = NULL;
+		TimestampTz currentTime = 0;
+
 		remainingTaskTrackerList = NIL;
 
-		pg_usleep(sleepInterval);
-		TimestampTz currentTime = GetCurrentTimestamp();
-		timedOut = TimestampDifferenceExceeds(startTime, currentTime, 150);
+		pg_usleep(statusCheckInterval);
+		currentTime = GetCurrentTimestamp();
+		timedOut = TimestampDifferenceExceeds(startTime, currentTime, timeoutDuration);
 
 		foreach(activeTaskTrackerCell, activeTackTrackerList)
 		{
@@ -2850,29 +2862,32 @@ TrackerHashCleanupJob(HTAB *taskTrackerHash, Task *jobCleanupTask)
 				QueryStatus queryStatus = MultiClientQueryStatus(connectionId);
 				if (queryStatus == CLIENT_QUERY_DONE)
 				{
-					ereport(DEBUG4, (errmsg("completed cleanup query for job " UINT64_FORMAT
-											" on node \"%s:%u\"", jobId, nodeName,
-											nodePort)));
+					ereport(DEBUG4, (errmsg("completed cleanup query for job "
+											UINT64_FORMAT " on node \"%s:%u\"", jobId,
+											nodeName, nodePort)));
 
 					/* clear connection for future cleanup queries */
 					taskTracker->connectionBusy = false;
 				}
 				else if (timedOut)
 				{
-					ereport(WARNING, (errmsg("(1) could not receive response for cleanup query "
-											 "for job " UINT64_FORMAT " on node \"%s:%u\"",
-											 jobId, nodeName, nodePort)));
+					ereport(WARNING, (errmsg("could not receive response for cleanup "
+											 "query status for job " UINT64_FORMAT " "
+											 "on node \"%s:%u\" with status %d", jobId,
+											 nodeName, nodePort, (int) queryStatus)));
 				}
 				else
 				{
-					remainingTaskTrackerList = lappend(remainingTaskTrackerList, taskTracker);
+					remainingTaskTrackerList = lappend(remainingTaskTrackerList,
+													   taskTracker);
 				}
 			}
 			else if (timedOut)
 			{
-				ereport(WARNING, (errmsg("(2) could not receive response for cleanup query "
-										 "for job " UINT64_FORMAT " on node \"%s:%u\"",
-										 jobId, nodeName, nodePort)));
+				ereport(WARNING, (errmsg("could not receive response for cleanup query "
+										 "result for job " UINT64_FORMAT " on node "
+										 "\"%s:%u\" with status %d", jobId, nodeName,
+										 nodePort, (int) resultStatus)));
 			}
 			else
 			{
@@ -2881,48 +2896,6 @@ TrackerHashCleanupJob(HTAB *taskTrackerHash, Task *jobCleanupTask)
 		}
 	}
 
-#if 0
-	/* give task trackers time to finish their clean up jobs */
-	sleepInterval = Max(minimumSleepInterval, RemoteTaskCheckInterval * 2) * 1000L;
-	pg_usleep(sleepInterval);
-
-	/* walk over task trackers to which we sent clean up requests */
-	taskTrackerCell = NULL;
-	foreach(taskTrackerCell, taskTrackerList)
-	{
-		TaskTracker *taskTracker = (TaskTracker *) lfirst(taskTrackerCell);
-		int32 connectionId = taskTracker->connectionId;
-		const char *nodeName = taskTracker->workerName;
-		uint32 nodePort = taskTracker->workerPort;
-
-		ResultStatus resultStatus = MultiClientResultStatus(connectionId);
-		if (resultStatus == CLIENT_RESULT_READY)
-		{
-			QueryStatus queryStatus = MultiClientQueryStatus(connectionId);
-			if (queryStatus == CLIENT_QUERY_DONE)
-			{
-				ereport(DEBUG4, (errmsg("completed cleanup query for job " UINT64_FORMAT
-										" on node \"%s:%u\"", jobId, nodeName,
-										nodePort)));
-
-				/* clear connection for future cleanup queries */
-				taskTracker->connectionBusy = false;
-			}
-			else
-			{
-				ereport(WARNING, (errmsg("could not receive response for cleanup query "
-										 "for job " UINT64_FORMAT " on node \"%s:%u\"",
-										 jobId, nodeName, nodePort)));
-			}
-		}
-		else
-		{
-			ereport(WARNING, (errmsg("could not receive response for cleanup query "
-									 "for job " UINT64_FORMAT " on node \"%s:%u\"",
-									 jobId, nodeName, nodePort)));
-		}
-	}
-#endif
 }
 
 
