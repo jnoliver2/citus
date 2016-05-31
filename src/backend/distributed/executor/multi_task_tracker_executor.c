@@ -34,6 +34,7 @@
 #include "utils/hsearch.h"
 #include "utils/timestamp.h"
 
+
 int MaxAssignTaskBatchSize = 64; /* maximum number of tasks to assign per round */
 
 /* TaskMapKey is used as a key in task hash */
@@ -2829,14 +2830,12 @@ TrackerHashCleanupJob(HTAB *taskTrackerHash, Task *jobCleanupTask)
 	/*
 	 * Walk over task trackers to which we sent clean up requests. Perform
 	 * these checks until it times out.
-	 */
-	remainingTaskTrackerList = taskTrackerList;
-
-	/*
-	 * We want to determine timedOut flag in the beginning of the loop to make
-	 * sure we iterate one more time after time out. This is necessary to report
+	 *
+	 * We want to determine timedOut flag after the loop start to make sure
+	 * we iterate one more time after time out occurs. This is necessary to report
 	 * warning messages for timed out cleanup jobs.
 	 */
+	remainingTaskTrackerList = taskTrackerList;
 	while (list_length(remainingTaskTrackerList) > 0 && !timedOut)
 	{
 		List *activeTackTrackerList = remainingTaskTrackerList;
