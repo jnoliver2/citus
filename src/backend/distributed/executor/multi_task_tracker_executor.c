@@ -2820,7 +2820,7 @@ TrackerHashCleanupJob(HTAB *taskTrackerHash, Task *jobCleanupTask)
 
 	/* give task trackers time to finish their clean up jobs */
 	sleepInterval = Max(minimumSleepInterval, RemoteTaskCheckInterval * 2) * 1000L;
-	pg_usleep(sleepInterval);
+	//pg_usleep(sleepInterval);
 
 	/* walk over task trackers to which we sent clean up requests */
 	taskTrackerCell = NULL;
@@ -2831,25 +2831,15 @@ TrackerHashCleanupJob(HTAB *taskTrackerHash, Task *jobCleanupTask)
 		const char *nodeName = taskTracker->workerName;
 		uint32 nodePort = taskTracker->workerPort;
 
-		ResultStatus resultStatus = MultiClientResultStatus(connectionId);
-		if (resultStatus == CLIENT_RESULT_READY)
+		QueryStatus queryStatus = MultiClientQueryStatus(connectionId);
+		if (queryStatus == CLIENT_QUERY_DONE)
 		{
-			QueryStatus queryStatus = MultiClientQueryStatus(connectionId);
-			if (queryStatus == CLIENT_QUERY_DONE)
-			{
-				ereport(DEBUG4, (errmsg("completed cleanup query for job " UINT64_FORMAT
-										" on node \"%s:%u\"", jobId, nodeName,
-										nodePort)));
+			ereport(DEBUG4, (errmsg("completed cleanup query for job " UINT64_FORMAT
+									" on node \"%s:%u\"", jobId, nodeName,
+									nodePort)));
 
-				/* clear connection for future cleanup queries */
-				taskTracker->connectionBusy = false;
-			}
-			else
-			{
-				ereport(WARNING, (errmsg("could not receive response for cleanup query "
-										 "for job " UINT64_FORMAT " on node \"%s:%u\"",
-										 jobId, nodeName, nodePort)));
-			}
+			/* clear connection for future cleanup queries */
+			taskTracker->connectionBusy = false;
 		}
 		else
 		{
