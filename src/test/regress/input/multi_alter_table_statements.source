@@ -6,7 +6,9 @@
 -- We set the shardid sequence here so that the shardids in this test
 -- aren't affected by changes to the previous tests.
 
-ALTER SEQUENCE pg_catalog.pg_dist_shardid_seq RESTART 103000;
+ALTER SEQUENCE pg_catalog.pg_dist_shardid_seq RESTART 220000;
+ALTER SEQUENCE pg_catalog.pg_dist_jobid_seq RESTART 12000;
+
 CREATE TABLE lineitem_alter (
 	l_orderkey bigint not null,
 	l_partkey integer not null,

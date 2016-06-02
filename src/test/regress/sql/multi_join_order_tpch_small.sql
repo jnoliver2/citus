@@ -2,6 +2,9 @@
 -- MULTI_JOIN_ORDER_TPCH_SMALL
 --
 
+ALTER SEQUENCE pg_catalog.pg_dist_shardid_seq RESTART 670000;
+ALTER SEQUENCE pg_catalog.pg_dist_jobid_seq RESTART 57000;
+
 -- Enable configuration to print table join order
 
 SET citus.explain_distributed_queries TO off;
