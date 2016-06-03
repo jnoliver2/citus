@@ -452,7 +452,7 @@ ORDER BY attnum;
 (29 rows)
 
 \c - - - :master_port
--- check we don't intercept DDL commands if propagation is turned off
+-- verify that we don't intercept DDL commands if propagation is turned off
 SET citus.enable_ddl_propagation to false;
 -- table rename statement can be performed now
 ALTER TABLE lineitem_alter RENAME TO lineitem_renamed;
@@ -466,21 +466,15 @@ SELECT relname FROM pg_class WHERE relname = 'lineitem_alter' or relname = 'line
 -- revert it to original name
 ALTER TABLE lineitem_renamed RENAME TO lineitem_alter;
 -- this column is added to master table and not workers
-ALTER TABLE lineitem_alter ADD COLUMN not_added_column int;
+ALTER TABLE lineitem_alter ADD COLUMN column_only_added_to_master int;
 -- verify newly added column is not present in a worker shard
 \c - - - :worker_1_port
-SELECT not_added_column FROM lineitem_alter_103000 LIMIT 0;
-ERROR:  column "not_added_column" does not exist
-LINE 1: SELECT not_added_column FROM lineitem_alter_103000 LIMIT 0;
+SELECT column_only_added_to_master FROM lineitem_alter_103000 LIMIT 0;
+ERROR:  column "column_only_added_to_master" does not exist
+LINE 1: SELECT column_only_added_to_master FROM lineitem_alter_10300...
                ^
 \c - - - :master_port
 -- ddl propagation flag is reset to default, disable it again
-SHOW citus.enable_ddl_propagation;
- citus.enable_ddl_propagation 
-------------------------------
- on
-(1 row)
-
 SET citus.enable_ddl_propagation to false;
 -- following query succeeds since it accesses an previously existing column
 SELECT l_orderkey FROM lineitem_alter LIMIT 0;
@@ -489,7 +483,7 @@ SELECT l_orderkey FROM lineitem_alter LIMIT 0;
 (0 rows)
 
 -- make master and workers have the same schema again
-ALTER TABLE lineitem_alter DROP COLUMN not_added_column;
+ALTER TABLE lineitem_alter DROP COLUMN column_only_added_to_master;
 -- now this should succeed
 SELECT * FROM lineitem_alter LIMIT 0;
  l_orderkey | l_partkey | l_suppkey | l_linenumber | l_quantity | l_extendedprice | l_discount | l_tax | l_returnflag | l_linestatus | l_shipdate | l_commitdate | l_receiptdate | l_shipinstruct | l_shipmode | l_comment | null_column 
