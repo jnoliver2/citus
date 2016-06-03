@@ -59,7 +59,7 @@
 /* planner functions forward declarations */
 static bool ContainsDisallowedFunctionCalls(Node *expression);
 static bool ContainsDisallowedFunctionCallsWalker(Node *expression, bool *containsVar);
-static char StrictestVolatileFlag(char left, char right);
+static char MostPermissiveVolatileFlag(char left, char right);
 static Task * RouterModifyTask(Query *query);
 #if (PG_VERSION_NUM >= 90500)
 static OnConflictExpr * RebuildOnConflict(Oid relationId,
@@ -476,12 +476,12 @@ static bool ContainsDisallowedFunctionCallsWalker(Node *expression, bool *contai
 		/* check the result type's input function */
 		getTypeInputInfo(expr->resulttype,
 						 &iofunc, &typioparam);
-		volatileFlag = StrictestVolatileFlag(volatileFlag, func_volatile(iofunc));
+		volatileFlag = MostPermissiveVolatileFlag(volatileFlag, func_volatile(iofunc));
 
 		/* check the input type's output function */
 		getTypeOutputInfo(exprType((Node *) expr->arg),
 						  &iofunc, &typisvarlena);
-		volatileFlag = StrictestVolatileFlag(volatileFlag, func_volatile(iofunc));
+		volatileFlag = MostPermissiveVolatileFlag(volatileFlag, func_volatile(iofunc));
 	}
 	else if (IsA(expression, ArrayCoerceExpr))
 	{
@@ -499,8 +499,8 @@ static bool ContainsDisallowedFunctionCallsWalker(Node *expression, bool *contai
 
 		foreach(opid, rcexpr->opnos)
 		{
-			volatileFlag = StrictestVolatileFlag(volatileFlag,
-												 op_volatile(lfirst_oid(opid)));
+			volatileFlag = MostPermissiveVolatileFlag(volatileFlag,
+													  op_volatile(lfirst_oid(opid)));
 		}
 	}
 	else if (IsA(expression, Query))
@@ -537,21 +537,20 @@ static bool ContainsDisallowedFunctionCallsWalker(Node *expression, bool *contai
  * for example: given two flags, if one is stable and one is volatile, an expression
  * involving both is volatile.
  */
-char StrictestVolatileFlag(char left, char right)
+char MostPermissiveVolatileFlag(char left, char right)
 {
-	char strictestFlag = PROVOLATILE_IMMUTABLE;
-
-	if(left == PROVOLATILE_STABLE || right == PROVOLATILE_STABLE)
-	{
-		strictestFlag = PROVOLATILE_STABLE;
-	}
-
 	if(left == PROVOLATILE_VOLATILE || right == PROVOLATILE_VOLATILE)
 	{
-		strictestFlag = PROVOLATILE_VOLATILE;
+		return PROVOLATILE_VOLATILE;
 	}
-
-	return strictestFlag;
+	else if(left == PROVOLATILE_STABLE || right == PROVOLATILE_STABLE)
+	{
+		return PROVOLATILE_STABLE;
+	}
+	else
+	{
+		return PROVOLATILE_IMMUTABLE;
+	}
 }
 
 
