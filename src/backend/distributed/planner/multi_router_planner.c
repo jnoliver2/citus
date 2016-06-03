@@ -57,7 +57,6 @@
 
 
 /* planner functions forward declarations */
-static void ErrorIfModifyQueryNotSupported(Query *queryTree);
 static bool ContainsDisallowedFunctionCalls(Node *expression);
 static bool ContainsDisallowedFunctionCallsWalker(Node *expression, bool *containsVar);
 static char StrictestVolatileFlag(char left, char right);

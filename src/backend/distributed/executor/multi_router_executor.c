@@ -361,7 +361,8 @@ ExecuteDistributedModify(Query *query, Task *task)
 }
 
 
-void DeparseShardQuery(Query *query, Task *task, StringInfo queryString)
+static void
+DeparseShardQuery(Query *query, Task *task, StringInfo queryString)
 {
 	uint64 shardId = task->anchorShardId;
 	Oid relid = ((RangeTblEntry *) linitial(query->rtable))->relid;
@@ -647,10 +648,12 @@ RouterExecutorEnd(QueryDesc *queryDesc)
 	queryDesc->totaltime = NULL;
 }
 
+
 /*
  * Walks each TargetEntry of the query, evaluates sub-expressions without Vars.
  */
-void ExecuteFunctions(Query *query)
+static void
+ExecuteFunctions(Query *query)
 {
 	CmdType commandType = query->commandType;
 	ListCell *targetEntryCell = NULL;
@@ -677,6 +680,7 @@ void ExecuteFunctions(Query *query)
 		targetEntry->expr = (Expr *) modifiedNode;
 	}
 }
+
 
 /*
  * Walks the expression, evaluates sub-expressions which don't contain Vars.
@@ -788,13 +792,13 @@ static Node * PartiallyEvaluateExpressionWalker(Node *expression,
 static List * RewriteArgs(ExpressionWalkerState *state)
 {
 	List *rewrittenArgs = NULL;
-	ListCell *nextArgCell = NULL;
-	int nextArg = 0;
+	ListCell *nextArgContainsVarCell = NULL;
+	int nextArgContainsVar = 0;
 
-	foreach(nextArgCell, state->subtreeOrder)
+	foreach(nextArgContainsVarCell, state->subtreeOrder)
 	{
-		nextArg = lfirst_int(nextArgCell);
-		if (nextArg)
+		nextArgContainsVar = lfirst_int(nextArgContainsVarCell);
+		if (nextArgContainsVar)
 		{
 			Node *original = (Node *)linitial(state->subtreesWithoutVar);
 			Node *evaluated = EvaluateExpression(original);
